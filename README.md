@@ -15,6 +15,7 @@ GitHub Fork Syncer automatically synchronizes your forked repositories with thei
 - 🔍 **Smart upstream detection** using GitHub API
 - 🌿 **Intelligent branch handling** with pattern matching and conflict resolution
 - 📊 **Comprehensive logging** and progress reporting
+- 📣 **ntfy notifications** when sync errors/conflicts occur
 - 🛡️ **Safe operations** with force-with-lease and conflict handling
 - ⚙️ **Flexible configuration** via environment variables or files
 - 🏗️ **Auto-directory creation** and repository cloning
@@ -44,6 +45,8 @@ GITHUB_USERNAMES=user1,user2,organization1
 SYNC_MODE=all
 SYNC_SCHEDULE="0 0 * * *"
 RUN_ON_STARTUP=true
+NTFY_ENABLED=true
+NTFY_TOPIC=your-ntfy-topic
 ```
 
 ### 3. Deploy with Docker Compose
@@ -134,6 +137,34 @@ environment:
 | `REPO_BASE_DIR` | Local repository storage path | `/app/repos` | Any valid path |
 | `SYNC_SCHEDULE` | Automated sync schedule | `0 0 * * *` | Cron-like expression |
 | `RUN_ON_STARTUP` | Run sync immediately on startup | `true` | `true`, `false` |
+
+### ntfy Notification Variables
+
+| Variable | Description | Default | Options |
+|----------|-------------|---------|---------|
+| `NTFY_ENABLED` | Enable ntfy notifications on sync errors/conflicts | `false` | `true`, `false` |
+| `NTFY_SERVER` | ntfy server base URL | `https://ntfy.sh` | Any valid ntfy server URL |
+| `NTFY_TOPIC` | ntfy topic to publish to | - | Any topic name |
+| `NTFY_TOKEN` | Bearer token auth (optional) | - | Token string |
+| `NTFY_USERNAME` | Basic auth username (optional) | - | Username |
+| `NTFY_PASSWORD` | Basic auth password (optional) | - | Password |
+| `NTFY_PRIORITY` | Notification priority | `4` | `1`..`5` |
+| `NTFY_TAGS` | Comma-separated tags | `warning,github,git` | Comma-separated tags |
+| `NTFY_TITLE` | Notification title header | `GitHub Fork Syncer Alert` | Any text |
+| `NTFY_FORCE_NOTIFY` | Send ntfy message even when no errors occur | `false` | `true`, `false` |
+
+### ntfy Example
+
+```bash
+NTFY_ENABLED=true
+NTFY_SERVER="https://ntfy.sh"
+NTFY_TOPIC="my-fork-sync-alerts"
+NTFY_PRIORITY=4
+NTFY_TAGS="warning,git"
+NTFY_FORCE_NOTIFY=true
+```
+
+When a sync run has at least one error (including merge conflicts), a single summary message is sent with counts and a short error list. If `NTFY_FORCE_NOTIFY=true`, a summary is also sent for successful runs.
 
 ### Branch Pattern Examples
 

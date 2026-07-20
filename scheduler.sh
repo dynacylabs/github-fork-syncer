@@ -15,6 +15,16 @@ export SYNC_BRANCHES="${SYNC_BRANCHES:-main,master,develop,dev,feature/*,release
 export CREATE_NEW_BRANCHES="${CREATE_NEW_BRANCHES:-true}"
 export GIT_USER_NAME="${GIT_USER_NAME:-GitHub Fork Syncer}"
 export GIT_USER_EMAIL="${GIT_USER_EMAIL:-github-fork-syncer@users.noreply.github.com}"
+export NTFY_ENABLED="${NTFY_ENABLED:-false}"
+export NTFY_SERVER="${NTFY_SERVER:-https://ntfy.sh}"
+export NTFY_TOPIC="${NTFY_TOPIC}"
+export NTFY_TOKEN="${NTFY_TOKEN}"
+export NTFY_USERNAME="${NTFY_USERNAME}"
+export NTFY_PASSWORD="${NTFY_PASSWORD}"
+export NTFY_PRIORITY="${NTFY_PRIORITY:-4}"
+export NTFY_TAGS="${NTFY_TAGS:-warning,github,git}"
+export NTFY_TITLE="${NTFY_TITLE:-GitHub Fork Syncer Alert}"
+export NTFY_FORCE_NOTIFY="${NTFY_FORCE_NOTIFY:-false}"
 
 # Get schedule from environment (cron-like syntax)
 SYNC_SCHEDULE="${SYNC_SCHEDULE:-0 0 * * *}"

@@ -26,6 +26,19 @@ SYNC_BRANCHES="${SYNC_BRANCHES:-main,master,develop,dev,feature/*,release/*}"
 # Whether to create new branches from upstream that don't exist in fork
 CREATE_NEW_BRANCHES="${CREATE_NEW_BRANCHES:-true}"
 
+# ntfy notification settings
+# Notifications are sent only when sync errors/conflicts occur.
+NTFY_ENABLED="${NTFY_ENABLED:-false}"
+NTFY_SERVER="${NTFY_SERVER:-https://ntfy.sh}"
+NTFY_TOPIC="${NTFY_TOPIC:-}"
+NTFY_TOKEN="${NTFY_TOKEN:-}"
+NTFY_USERNAME="${NTFY_USERNAME:-}"
+NTFY_PASSWORD="${NTFY_PASSWORD:-}"
+NTFY_PRIORITY="${NTFY_PRIORITY:-4}"
+NTFY_TAGS="${NTFY_TAGS:-warning,github,git}"
+NTFY_TITLE="${NTFY_TITLE:-GitHub Fork Syncer Alert}"
+NTFY_FORCE_NOTIFY="${NTFY_FORCE_NOTIFY:-false}"
+
 # Create the base directory if it doesn't exist
 mkdir -p "$BASE_REPO_DIR"
 
@@ -34,8 +47,93 @@ TOTAL_REPOS=0
 TOTAL_BRANCHES_SYNCED=0
 TOTAL_BRANCHES_CREATED=0
 TOTAL_ERRORS=0
+TOTAL_CONFLICTS=0
 declare -a ERRORS
 declare -a REPO_SUMMARIES
+
+# Send ntfy alert.
+send_ntfy_notification() {
+    local notification_mode="${1:-error}"
+
+    if [ "$NTFY_ENABLED" != "true" ]; then
+        return 0
+    fi
+
+    if [ -z "$NTFY_TOPIC" ]; then
+        echo "⚠️  ntfy is enabled, but NTFY_TOPIC is not set. Skipping notification."
+        return 1
+    fi
+
+    local ntfy_url="${NTFY_SERVER%/}/$NTFY_TOPIC"
+    local users_display
+    users_display=$(echo "$USERNAMES" | xargs)
+
+    local details=""
+    local header="GitHub Fork Syncer detected sync issues."
+    if [ "$notification_mode" = "force" ]; then
+        header="GitHub Fork Syncer completed (forced notification)."
+    fi
+
+    if [ ${#ERRORS[@]} -gt 0 ]; then
+        local max_details=20
+        local shown=0
+        local error_item
+        for error_item in "${ERRORS[@]}"; do
+            details+="- $error_item\n"
+            shown=$((shown + 1))
+            if [ "$shown" -ge "$max_details" ]; then
+                break
+            fi
+        done
+        if [ "${#ERRORS[@]}" -gt "$max_details" ]; then
+            details+="- ... and $(( ${#ERRORS[@]} - max_details )) more\n"
+        fi
+    else
+        details="- No errors detected.\n"
+    fi
+
+    local message
+    message=$(cat <<EOF
+${header}
+
+Users: ${users_display:-unknown}
+Repositories processed: $TOTAL_REPOS
+Branches synced: $TOTAL_BRANCHES_SYNCED
+Branches created: $TOTAL_BRANCHES_CREATED
+Errors: $TOTAL_ERRORS
+Conflicts: $TOTAL_CONFLICTS
+
+Error details:
+${details}
+EOF
+)
+
+    local -a curl_args
+    curl_args=(
+        -sS
+        --max-time 15
+        -X POST
+        -H "Title: $NTFY_TITLE"
+        -H "Priority: $NTFY_PRIORITY"
+        -H "Tags: $NTFY_TAGS"
+        --data-binary "$message"
+        "$ntfy_url"
+    )
+
+    if [ -n "$NTFY_TOKEN" ]; then
+        curl_args+=( -H "Authorization: Bearer $NTFY_TOKEN" )
+    elif [ -n "$NTFY_USERNAME" ] && [ -n "$NTFY_PASSWORD" ]; then
+        curl_args+=( -u "$NTFY_USERNAME:$NTFY_PASSWORD" )
+    fi
+
+    if ! curl "${curl_args[@]}" >/dev/null; then
+        echo "⚠️  Failed to send ntfy notification to $ntfy_url"
+        return 1
+    fi
+
+    echo "📣 ntfy notification sent for sync errors"
+    return 0
+}
 
 # Function to check if a branch matches sync patterns
 should_sync_branch() {
@@ -141,6 +239,7 @@ sync_all_branches() {
                 else
                     ERRORS+=("$repo/$branch: Merge conflict")
                     git merge --abort 2>/dev/null
+                    TOTAL_CONFLICTS=$((TOTAL_CONFLICTS + 1))
                     ((error_count++))
                 fi
             else
@@ -392,6 +491,7 @@ process_user_forks() {
                     else
                         ERRORS+=("$REPO/$DEFAULT_BRANCH: Merge conflict")
                         git merge --abort 2>/dev/null
+                        TOTAL_CONFLICTS=$((TOTAL_CONFLICTS + 1))
                         TOTAL_ERRORS=$((TOTAL_ERRORS + 1))
                     fi
                 else
@@ -450,6 +550,7 @@ echo "  📦 Repositories processed: $TOTAL_REPOS"
 echo "  ✅ Branches synced: $TOTAL_BRANCHES_SYNCED"
 echo "  📥 Branches created: $TOTAL_BRANCHES_CREATED"
 echo "  ❌ Errors: $TOTAL_ERRORS"
+echo "  ⚠️  Conflicts: $TOTAL_CONFLICTS"
 
 # Display errors if any
 if [ ${#ERRORS[@]} -gt 0 ]; then
@@ -458,10 +559,14 @@ if [ ${#ERRORS[@]} -gt 0 ]; then
     for error in "${ERRORS[@]}"; do
         echo "  ❌ $error"
     done
+    send_ntfy_notification "error"
     echo ""
     echo "=========================================="
     exit 1
 else
+    if [ "$NTFY_FORCE_NOTIFY" = "true" ]; then
+        send_ntfy_notification "force"
+    fi
     echo ""
     echo "✅ All operations completed successfully!"
     echo "=========================================="
